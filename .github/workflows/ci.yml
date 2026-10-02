@@ -59,14 +59,20 @@ jobs:
         if: always()
         run: docker stop edxka-test || true
 
-      - name: Tag image for GHCR
+            - name: Tag image for GHCR
         if: github.event_name == 'push'
         run: |
-          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/edxka:latest"
-          docker tag edxka:ci "$IMAGE_NAME"
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/edxka"
+          SHA_TAG="${GITHUB_SHA}"
+
+          docker tag edxka:ci "$IMAGE_NAME:latest"
+          docker tag edxka:ci "$IMAGE_NAME:$SHA_TAG"
+
           echo "IMAGE_NAME=$IMAGE_NAME" >> "$GITHUB_ENV"
+          echo "SHA_TAG=$SHA_TAG" >> "$GITHUB_ENV"
 
       - name: Push image to GHCR
         if: github.event_name == 'push'
         run: |
-          docker push "$IMAGE_NAME"
+          docker push "$IMAGE_NAME:latest"
+          docker push "$IMAGE_NAME:$SHA_TAG"
