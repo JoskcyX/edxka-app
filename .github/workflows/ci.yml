@@ -1,7 +1,6 @@
-
 name: EDxKa CI
 
-on:
+"on":
     push:
         pull_request:
 
