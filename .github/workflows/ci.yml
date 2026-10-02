@@ -1,17 +1,33 @@
 name: EDxKa CI
 
-"on":
-    push:
-        pull_request:
+on:
+  push:
+  pull_request:
 
-          jobs:
-              build:
-                    name: Build Docker Image
-                        runs-on: ubuntu-latest
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
 
-                            steps:
-                                    - name: Checkout repository
-                                            uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-                                                  - name: Build Docker image
-                                                          run: docker build -f server/Dockerfile -t edxka:ci .
+      - name: Build Docker image
+        run: docker build -f server/Dockerfile -t edxka:ci .name: EDxKa CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -f server/Dockerfile -t edxka:ci .
