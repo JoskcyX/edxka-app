@@ -59,7 +59,7 @@ jobs:
         if: always()
         run: docker stop edxka-test || true
 
-            - name: Tag image for GHCR
+      - name: Tag image for GHCR
         if: github.event_name == 'push'
         run: |
           IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/edxka"
