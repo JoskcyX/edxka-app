@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EDxKa — One link. Your whole class. Racing the clock.</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div class="bg-circles" aria-hidden="true">
+  <div class="bg-circle bg-circle-1"></div>
+  <div class="bg-circle bg-circle-2"></div>
+  <div class="bg-circle bg-circle-3"></div>
+  <div class="bg-circle bg-circle-4"></div>
+  <div class="bg-circle bg-circle-5"></div>
+</div>
+
+<div class="container">
+  <nav class="nav">
+    <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+    <div class="flex items-center gap-12">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"></button>
+      <a href="/signin.html" class="btn btn-outline">Tutor sign in</a>
+    </div>
+  </nav>
+
+  <div class="hero fade-in">
+    <div>
+      <div class="eyebrow"><i data-lucide="sparkles" class="icon"></i> Live, timed, deliciously competitive</div>
+      <h1>One link. Your whole class. <span class="accent">Racing the clock.</span></h1>
+      <p class="lead">
+        Write 5 questions or 40. Share the link. When you press start, every student gets the
+        same questions, one at a time, against a countdown — and the leaderboard ranks them by
+        correct answers, then raw speed.
+      </p>
+
+      <form class="join-form" id="joinForm">
+        <input type="text" id="joinCode" placeholder="ENTER QUIZ CODE" maxlength="6" required />
+        <button type="submit" class="btn btn-primary">Join quiz</button>
+      </form>
+      <div class="error-text hidden" id="joinError"></div>
+      <p class="muted mt-16" style="font-size:14px;">
+        Studying alone? <a href="/practice.html" style="color:var(--teal-dark);font-weight:800;">Try a quiz solo, at your own pace →</a>
+      </p>
+    </div>
+
+    <div class="card lobby-preview">
+      <div class="flex justify-between items-center">
+        <h3>Live lobby</h3>
+        <span class="badge badge-teal">12 waiting</span>
+      </div>
+      <div class="lobby-grid">
+        <div class="participant-pill"><span class="avatar">A</span> Amara</div>
+        <div class="participant-pill"><span class="avatar">T</span> Tobi</div>
+        <div class="participant-pill"><span class="avatar">Z</span> Zainab</div>
+        <div class="participant-pill"><span class="avatar">C</span> Chidi</div>
+        <div class="participant-pill"><span class="avatar">I</span> Ife</div>
+        <div class="participant-pill"><span class="avatar">M</span> Musa</div>
+      </div>
+      <div class="dashed countdown-box">
+        <div class="clock">00:14</div>
+        <div class="cap">until the tutor presses start</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="features">
+    <div class="card feature">
+      <i data-lucide="rocket" class="icon feature-icon"></i>
+      <h4>Build fast</h4>
+      <p>Multiple choice, true/false or typed answers — as many as you like.</p>
+    </div>
+    <div class="card feature">
+      <i data-lucide="users" class="icon feature-icon"></i>
+      <h4>One shared link</h4>
+      <p>Students enter a name and phone number. No accounts, no downloads.</p>
+    </div>
+    <div class="card feature">
+      <i data-lucide="timer" class="icon feature-icon"></i>
+      <h4>Beat the clock</h4>
+      <p>Every question has its own countdown and auto-advances.</p>
+    </div>
+    <div class="card feature">
+      <i data-lucide="trophy" class="icon feature-icon"></i>
+      <h4>Instant ranking</h4>
+      <p>Sorted by correct answers first, then fastest total time.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/theme.js"></script>
+<script>
+mountThemeToggle(document.getElementById('themeToggle'));
+
+document.getElementById('joinForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const code = document.getElementById('joinCode').value.trim().toUpperCase();
+  const err = document.getElementById('joinError');
+  if (!code) { err.textContent = 'Enter a quiz code first.'; err.classList.remove('hidden'); return; }
+  window.location.href = `/join.html?code=${encodeURIComponent(code)}`;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Edit quiz — EDxKa</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+
+  <div class="container" style="padding-bottom:60px;">
+    <nav class="nav">
+      <a href="/dashboard.html" class="btn btn-outline"><i data-lucide="arrow-left" class="icon"></i> Dashboard</a>
+      <div class="flex items-center gap-12">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"></button>
+        <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+      </div>
+    </nav>
+
+    <div class="card editor-panel fade-in">
+      <div class="flex gap-16" style="flex-wrap:wrap;">
+        <div class="field" style="margin-bottom:0;flex:2;min-width:220px;">
+          <label for="titleInput">Quiz title</label>
+          <input type="text" id="titleInput" placeholder="e.g. SS2 Chemistry — Periodic Table" />
+        </div>
+        <div class="field" style="margin-bottom:0;flex:1;min-width:160px;">
+          <label for="subjectInput">Subject</label>
+          <input type="text" id="subjectInput" placeholder="e.g. Chemistry" />
+        </div>
+      </div>
+    </div>
+
+    <div class="editor-top fade-in">
+      <div class="card dashed editor-panel">
+        <div class="muted" style="font-weight:800;font-size:13px;">Student link</div>
+        <div class="code-display" id="codeDisplay">------</div>
+        <div class="link-row">
+          <input type="text" id="linkInput" readonly />
+          <button class="btn btn-teal btn-sm" id="copyBtn" aria-label="Copy link"><i data-lucide="copy" class="icon"></i></button>
+        </div>
+        <div class="help-text mt-8" id="soloHelpText">Students can also go to <strong>/practice.html</strong> and enter this code to try
+          it solo, anytime.</div>
+      </div>
+
+      <!-- Sync (live) session control -->
+      <div class="card editor-panel" id="syncControlCard">
+        <div class="muted" style="font-weight:800;font-size:13px;">Session control</div>
+        <div style="font-size:20px;font-weight:900;margin:4px 0 2px;" id="statusLabel">Draft</div>
+        <div class="session-controls">
+          <button class="btn btn-teal btn-sm" id="openLobbyBtn"><i data-lucide="users" class="icon"></i> Open lobby</button>
+          <button class="btn btn-primary btn-sm" id="startBtn"><i data-lucide="play" class="icon"></i> Start quiz</button>
+          <button class="btn btn-ghost btn-sm" id="endBtn"><i data-lucide="square" class="icon"></i> End</button>
+          <button class="btn btn-outline btn-sm hidden" id="resetBtn"><i data-lucide="rotate-ccw" class="icon"></i> Run again</button>
+        </div>
+        <div id="progressBox" class="hidden mt-16">
+          <div class="monitor-question">
+            <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="1" />
+            </svg>
+            <span id="liveQuestionText">Waiting for the first question…</span>
+          </div>
+          <div class="monitor-stats">
+            <div class="monitor-stat">
+              <div class="monitor-stat-label">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <path d="M16 3.128a4 4 0 0 1 0 7.744" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                  <circle cx="9" cy="7" r="4" />
+                </svg>
+                Students
+              </div>
+              <div class="monitor-stat-value" id="totalStudentsValue">0</div>
+            </div>
+            <div class="monitor-stat">
+              <div class="monitor-stat-label">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6 7 17l-5-5" />
+                  <path d="m22 10-7.5 7.5L13 16" />
+                </svg>
+                Answered
+              </div>
+              <div class="monitor-stat-value" id="answeredCountValue">0 / 0</div>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="answerProgressFill" style="width:0%;"></div>
+          </div>
+          <div class="student-progress-list" id="studentProgressList"></div>
+          <button class="btn btn-teal btn-sm btn-block mt-16" id="skipBtn">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 4v16" />
+              <path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z" />
+            </svg>
+            Skip to next question
+          </button>
+        </div>
+        <div class="error-text hidden mt-8" id="sessionErr"></div>
+      </div>
+
+      <!-- Async (self-paced) publish control -->
+      <div class="card editor-panel hidden" id="asyncControlCard">
+        <div class="muted" style="font-weight:800;font-size:13px;">Time limit &amp; publishing</div>
+        <div style="font-size:20px;font-weight:900;margin:4px 0 2px;" id="asyncStatusLabel">Draft</div>
+
+        <div class="field mt-16" style="margin-bottom:8px;" id="asyncDurationField">
+          <label for="asyncMinutesInput">Time limit per student (minutes)</label>
+          <input type="number" id="asyncMinutesInput" min="1" max="180" step="1" value="5" style="max-width:120px;" />
+        </div>
+        <div class="help-text mb-8">The clock starts the moment each student opens the link — not a shared countdown. Once you publish, the time limit is locked until you close or reset the quiz.</div>
+
+        <div class="session-controls">
+          <button class="btn btn-primary btn-sm" id="publishAsyncBtn"><i data-lucide="rocket" class="icon"></i> Publish &amp; share link</button>
+          <button class="btn btn-ghost btn-sm hidden" id="closeAsyncBtn"><i data-lucide="square" class="icon"></i> Close</button>
+          <button class="btn btn-teal btn-sm hidden" id="reopenAsyncBtn"><i data-lucide="play" class="icon"></i> Reopen</button>
+          <button class="btn btn-outline btn-sm hidden" id="resetAsyncBtn"><i data-lucide="rotate-ccw" class="icon"></i> Run again</button>
+        </div>
+        <div class="mt-16" id="asyncLiveCount"></div>
+        <div class="error-text hidden mt-8" id="asyncErr"></div>
+      </div>
+    </div>
+
+    <div class="flex justify-between items-center mt-32 mb-16">
+      <h2 style="margin:0;" id="questionsHeading">Questions (0)</h2>
+      <div class="flex gap-8">
+        <button class="btn btn-outline" id="bulkImportBtn"><i data-lucide="clipboard-list" class="icon"></i> Bulk import</button>
+        <button class="btn btn-primary" id="addQuestionBtn"><i data-lucide="plus" class="icon"></i> Add question</button>
+      </div>
+    </div>
+    <div id="questionsList"></div>
+    <div id="questionsEmpty" class="card empty-state hidden">No questions yet — add as many as you need.</div>
+
+    <div class="flex justify-between items-center mt-32 mb-8" style="flex-wrap:wrap;gap:8px;">
+      <h2 style="margin:0;">Leaderboard</h2>
+      <div class="flex gap-8">
+        <button class="btn btn-outline btn-sm" id="downloadCsvBtn">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 15V3" />
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <path d="m7 10 5 5 5-5" />
+          </svg>
+          Download CSV
+        </button>
+        <button class="btn btn-outline btn-sm" id="statsBtn"><i data-lucide="bar-chart-3" class="icon"></i> View analytics</button>
+      </div>
+    </div>
+    <p class="muted mb-16">Ranked by correct answers, then fastest total time.</p>
+    <div class="card" id="leaderboardCard">
+      <div class="empty-state" id="leaderboardEmpty">Nobody has joined yet.</div>
+      <div id="leaderboardList"></div>
+    </div>
+  </div>
+
+  <!-- Add question modal -->
+  <div class="modal-backdrop hidden" id="modalBackdrop">
+    <div class="modal">
+      <h3 style="margin-top:0;">Add a question</h3>
+      <form id="questionForm">
+        <div class="field">
+          <label for="qType">Type</label>
+          <select id="qType">
+            <option value="mcq">Multiple choice</option>
+            <option value="truefalse">True / False</option>
+            <option value="typed">Typed answer / fill-in-the-blank</option>
+            <option value="numeric">Numeric answer</option>
+            <option value="ordering">Put in order (ranking)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="qText">Question</label>
+          <textarea id="qText" rows="2" required></textarea>
+        </div>
+        <div class="field">
+          <label for="qImage">Image URL (optional)</label>
+          <input type="url" id="qImage" placeholder="https://…" />
+        </div>
+        <div class="field">
+          <label for="qTopic">Topic tag (optional — powers weak-topic analytics)</label>
+          <input type="text" id="qTopic" placeholder="e.g. Stoichiometry" />
+        </div>
+
+        <div id="mcqOptions">
+          <div class="field">
+            <label>Options</label>
+            <div class="flex-col gap-8">
+              <input type="text" class="opt-input" placeholder="Option A" />
+              <input type="text" class="opt-input" placeholder="Option B" />
+              <input type="text" class="opt-input" placeholder="Option C (optional)" />
+              <input type="text" class="opt-input" placeholder="Option D (optional)" />
+            </div>
+          </div>
+        </div>
+
+        <div id="orderingOptions" class="hidden">
+          <div class="field">
+            <label>Items, in the CORRECT order (top to bottom)</label>
+            <div class="flex-col gap-8">
+              <input type="text" class="order-input" placeholder="Item 1" />
+              <input type="text" class="order-input" placeholder="Item 2" />
+              <input type="text" class="order-input" placeholder="Item 3" />
+              <input type="text" class="order-input" placeholder="Item 4 (optional)" />
+            </div>
+            <div class="help-text">Students will see these shuffled and put them back in this order.</div>
+          </div>
+        </div>
+
+        <div id="correctAnswerField" class="field">
+          <label for="qCorrect">Correct answer</label>
+          <input type="text" id="qCorrect" placeholder="Must match one option exactly" />
+          <div class="help-text" id="correctHelp"></div>
+        </div>
+
+        <div id="toleranceField" class="field hidden">
+          <label for="qTolerance">Allowed margin of error (±)</label>
+          <input type="number" id="qTolerance" value="0" min="0" step="any" />
+        </div>
+
+        <div class="field">
+          <label for="qTime">Time limit (seconds)</label>
+          <input type="number" id="qTime" value="20" min="5" max="120" />
+        </div>
+
+        <div class="error-text hidden" id="qErr"></div>
+        <div class="flex gap-12 mt-16">
+          <button type="button" class="btn btn-outline btn-block" id="cancelModalBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-block" id="saveQBtn">Add question</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bulk import modal -->
+  <div class="modal-backdrop hidden" id="bulkModal">
+    <div class="modal" style="max-width:640px;">
+      <h3 style="margin-top:0;">Bulk import questions</h3>
+      <p class="muted mb-16" style="font-size:14px;">
+        Paste several questions at once, separated by a blank line. Options can be on their
+        own lines, or all on the same line as the question — both work. Format guide:
+      </p>
+      <pre
+        style="background:var(--border);padding:12px 16px;border-radius:12px;font-size:12px;overflow-x:auto;white-space:pre-wrap;">Q: What is the capital of Nigeria? A) Lagos B) Abuja C) Kano D) Kaduna
+ANSWER: B
+TIME: 20
+TOPIC: Geography
+
+Q: What is the capital of Nigeria?
+A) Lagos
+B) Abuja
+C) Kano
+ANSWER: B
+TIME: 20
+TOPIC: Geography
+
+Q: The earth is flat.
+TYPE: TRUEFALSE
+ANSWER: False
+
+Q: 12 x 12 = ?
+TYPE: NUMERIC
+ANSWER: 144
+
+Q: Capital of France?
+TYPE: TYPED
+ANSWER: Paris|paris city
+
+Q: Put these in order, smallest to largest
+TYPE: ORDERING
+A) 1
+B) 2
+C) 3</pre>
+      <div class="field mt-16">
+        <label for="bulkText">Paste your questions</label>
+        <textarea id="bulkText" rows="10" placeholder="Paste questions here…"></textarea>
+      </div>
+      <div class="error-text hidden" id="bulkErr"></div>
+      <div id="bulkPreview" class="mt-16"></div>
+      <div class="flex gap-12 mt-16">
+        <button type="button" class="btn btn-outline btn-block" id="bulkCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-teal btn-block" id="bulkParseBtn">Preview</button>
+        <button type="button" class="btn btn-primary btn-block hidden" id="bulkAddBtn">Add all questions</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Analytics modal -->
+  <div class="modal-backdrop hidden" id="statsModal">
+    <div class="modal" style="max-width:600px;">
+      <div class="flex justify-between items-center">
+        <h3 style="margin:0;">Analytics</h3>
+        <button class="btn btn-ghost btn-sm" id="closeStatsBtn" aria-label="Close"><i data-lucide="x" class="icon"></i></button>
+      </div>
+      <div id="statsBody" class="mt-16"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/api.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="/theme.js"></script>
+  <script>
+    API.requireAuth();
+    mountThemeToggle(document.getElementById('themeToggle'));
+
+    const params = new URLSearchParams(window.location.search);
+    const quizId = params.get('id');
+    if (!quizId) window.location.href = '/dashboard.html';
+
+    let quiz = null;
+    let socket = null;
+
+    const STATUS_LABEL = { draft: 'Draft', lobby: 'Lobby open', live: 'Live now', finished: 'Finished' };
+    const ASYNC_STATUS_LABEL = { draft: 'Draft — not shared yet', open: 'Open — accepting responses', closed: 'Closed' };
+
+    let asyncPollTimer = null;
+
+    async function loadQuiz() {
+      try {
+        const { quiz: q } = await API.get(`/api/quizzes/${quizId}`);
+        quiz = q;
+        render();
+        if ((quiz.type || 'sync') === 'sync') connectSocket();
+        else startAsyncPolling();
+      } catch (err) {
+        alert(err.message);
+        window.location.href = '/dashboard.html';
+      }
+    }
+
+    // Async quizzes have no live socket feed — students trickle in over
+    // minutes or days. Poll gently while it's open so the leaderboard fills
+    // in without a manual refresh.
+    function startAsyncPolling() {
+      if (asyncPollTimer) clearInterval(asyncPollTimer);
+      asyncPollTimer = setInterval(async () => {
+        if (quiz.status !== 'open') { clearInterval(asyncPollTimer); return; }
+        try {
+          const { quiz: q } = await API.get(`/api/quizzes/${quizId}`);
+          quiz = q;
+          render();
+        } catch (err) { /* transient — ignore, next tick will retry */ }
+      }, 5000);
+    }
+
+    function render() {
+      const isAsync = (quiz.type || 'sync') === 'async';
+      document.title = `${quiz.title} — EDxKa`;
+      document.getElementById('titleInput').value = quiz.title;
+      document.getElementById('subjectInput').value = quiz.subject || '';
+      document.getElementById('codeDisplay').textContent = quiz.code;
+      document.getElementById('linkInput').value = isAsync
+        ? `${window.location.origin}/async.html?code=${quiz.code}`
+        : `${window.location.origin}/join.html?code=${quiz.code}`;
+      document.getElementById('soloHelpText').classList.toggle('hidden', isAsync);
+
+      document.getElementById('syncControlCard').classList.toggle('hidden', isAsync);
+      document.getElementById('asyncControlCard').classList.toggle('hidden', !isAsync);
+
+      if (isAsync) {
+        renderAsyncControls();
+      } else {
+        renderSyncControls();
+      }
+
+      document.getElementById('questionsHeading').textContent = `Questions (${quiz.questions.length})`;
+      document.getElementById('addQuestionBtn').disabled = quiz.status !== 'draft';
+
+      const listEl = document.getElementById('questionsList');
+      const emptyEl = document.getElementById('questionsEmpty');
+      if (quiz.questions.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.classList.remove('hidden');
+      } else {
+        emptyEl.classList.add('hidden');
+        listEl.innerHTML = quiz.questions.map((q, i) => `
+      <div class="card question-card fade-in">
+        <div>
+          <div class="q-type">${labelForType(q.type)} · ${q.timeLimit}s ${q.topic ? `· <span class="subject-pill">${escapeHtml(q.topic)}</span>` : ''}</div>
+          <div class="q-text">${i + 1}. ${escapeHtml(q.text)} ${q.imageUrl ? '<i data-lucide="image" class="icon"></i>' : ''}</div>
+          <div class="q-meta">Correct answer: ${escapeHtml(displayAnswer(q))}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="deleteQuestion('${q.id}')" ${quiz.status !== 'draft' ? 'disabled' : ''} aria-label="Delete question"><i data-lucide="trash-2" class="icon"></i></button>
+      </div>`).join('');
+        refreshIcons();
+      }
+
+      renderLeaderboard(quiz.participants
+        .map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: p.score, totalTimeMs: p.totalTimeMs, bestStreak: p.bestStreak, badges: [] }))
+        .sort((a, b) => (b.score - a.score) || (a.totalTimeMs - b.totalTimeMs)));
+      refreshIcons();
+    }
+
+    function renderSyncControls() {
+      document.getElementById('statusLabel').textContent = STATUS_LABEL[quiz.status];
+      const openLobbyBtn = document.getElementById('openLobbyBtn');
+      const startBtn = document.getElementById('startBtn');
+      const endBtn = document.getElementById('endBtn');
+      const resetBtn = document.getElementById('resetBtn');
+
+      openLobbyBtn.disabled = quiz.status !== 'draft';
+      startBtn.disabled = quiz.status !== 'lobby';
+      endBtn.disabled = !['lobby', 'live'].includes(quiz.status);
+      resetBtn.classList.toggle('hidden', quiz.status !== 'finished');
+      document.getElementById('progressBox').classList.toggle('hidden', quiz.status !== 'live');
+    }
+
+    function renderAsyncControls() {
+      document.getElementById('asyncStatusLabel').textContent = ASYNC_STATUS_LABEL[quiz.status] || quiz.status;
+
+      const minutesInput = document.getElementById('asyncMinutesInput');
+      if (document.activeElement !== minutesInput) {
+        minutesInput.value = Math.round((quiz.asyncDurationSec || 300) / 60);
+      }
+      minutesInput.disabled = quiz.status !== 'draft';
+
+      document.getElementById('publishAsyncBtn').classList.toggle('hidden', quiz.status !== 'draft');
+      document.getElementById('closeAsyncBtn').classList.toggle('hidden', quiz.status !== 'open');
+      document.getElementById('reopenAsyncBtn').classList.toggle('hidden', quiz.status !== 'closed');
+      document.getElementById('resetAsyncBtn').classList.toggle('hidden', quiz.status !== 'closed');
+
+      const submitted = quiz.participants.filter(p => p.answered === quiz.questions.length).length;
+      const started = quiz.participants.length;
+      const countEl = document.getElementById('asyncLiveCount');
+      if (quiz.status === 'draft') {
+        countEl.innerHTML = '';
+      } else {
+        countEl.innerHTML = `<span class="muted">${started} student${started === 1 ? '' : 's'} started · ${submitted} finished</span>`;
+      }
+    }
+
+    function displayAnswer(q) {
+      if (q.type === 'ordering') return (q.items || []).join(' → ');
+      if (q.type === 'typed') return q.correctAnswer.split('|').join(' / ');
+      return q.correctAnswer;
+    }
+
+    function labelForType(t) {
+      return { mcq: 'Multiple choice', truefalse: 'True / False', typed: 'Typed answer', numeric: 'Numeric', ordering: 'Ordering' }[t] || t;
+    }
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function renderLeaderboard(rows) {
+      const emptyEl = document.getElementById('leaderboardEmpty');
+      const listEl = document.getElementById('leaderboardList');
+      if (rows.length === 0) {
+        emptyEl.classList.remove('hidden');
+        listEl.innerHTML = '';
+        return;
+      }
+      emptyEl.classList.add('hidden');
+      const medalCls = ['gold', 'silver', 'bronze'];
+      listEl.innerHTML = rows.map((r, i) => `
+    <div class="leaderboard-row fade-in">
+      <div class="rank-badge ${medalCls[i] || ''}">${i + 1}</div>
+      <span style="font-size:20px;">${r.avatar || '🙂'}</span>
+      <div style="flex:1;font-weight:700;">
+        ${escapeHtml(r.name)}
+        ${(r.badges || []).map(b => `<span class="badge badge-teal" style="margin-left:6px;font-size:11px;"><i data-lucide="${b.icon || 'award'}" class="icon" style="width:12px;height:12px;"></i> ${escapeHtml(b.label)}</span>`).join('')}
+      </div>
+      <div class="muted" style="font-size:13px;">${(r.totalTimeMs / 1000).toFixed(1)}s</div>
+      <div class="badge badge-orange">${r.score} correct</div>
+    </div>`).join('');
+      refreshIcons();
+    }
+
+    // ---- Live monitor pane: who's answered, who hasn't, right now ----
+    // Note this is purely informational — the skip button below is never
+    // gated on it, since a student who's stepped away shouldn't be able to
+    // stall the whole class.
+    function renderAnswerProgress({ total, answeredCount, question, students }) {
+      document.getElementById('totalStudentsValue').textContent = total;
+      document.getElementById('answeredCountValue').textContent = `${answeredCount} / ${total}`;
+      const pct = total > 0 ? Math.round((answeredCount / total) * 100) : 0;
+      document.getElementById('answerProgressFill').style.width = `${pct}%`;
+
+      const qEl = document.getElementById('liveQuestionText');
+      qEl.textContent = question
+        ? `Question ${question.index + 1} of ${question.total}: ${question.text}`
+        : 'Waiting for the first question…';
+
+      const listEl = document.getElementById('studentProgressList');
+      if (!students || students.length === 0) {
+        listEl.innerHTML = '';
+        return;
+      }
+      const sorted = [...students].sort((a, b) => Number(b.answered) - Number(a.answered) || a.name.localeCompare(b.name));
+      listEl.innerHTML = sorted.map((s) => `
+        <div class="student-progress-row ${s.answered ? 'answered' : ''} ${s.connected ? '' : 'disconnected'}">
+          <span class="dot"></span>
+          <span style="font-size:15px;">${s.avatar || '🙂'}</span>
+          <span class="student-progress-name">${escapeHtml(s.name)}</span>
+          <span class="student-progress-status">${s.answered ? 'Answered' : s.connected ? 'Waiting…' : 'Offline'}</span>
+        </div>`).join('');
+    }
+
+    // ---- Download results as CSV ----
+    document.getElementById('downloadCsvBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('downloadCsvBtn');
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = 'Preparing…';
+      try {
+        const res = await fetch(`/api/quizzes/${quizId}/results.csv`, {
+          headers: { Authorization: `Bearer ${API.token()}` },
+        });
+        if (!res.ok) {
+          let message = 'Could not download results.';
+          try { message = (await res.json()).error || message; } catch { }
+          throw new Error(message);
+        }
+        const blob = await res.blob();
+        const filename = `${(quiz.title || 'quiz').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-results.csv`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    });
+
+    // ---- Title / subject save (on blur) ----
+    async function saveMeta() {
+      const title = document.getElementById('titleInput').value.trim() || 'Untitled quiz';
+      const subject = document.getElementById('subjectInput').value.trim();
+      if (title === quiz.title && subject === (quiz.subject || '')) return;
+      try {
+        const { quiz: q } = await API.put(`/api/quizzes/${quizId}`, { title, subject });
+        quiz = q;
+      } catch (err) { alert(err.message); }
+    }
+    document.getElementById('titleInput').addEventListener('blur', saveMeta);
+    document.getElementById('subjectInput').addEventListener('blur', saveMeta);
+
+    // ---- Copy link ----
+    document.getElementById('copyBtn').addEventListener('click', () => {
+      const input = document.getElementById('linkInput');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        const btn = document.getElementById('copyBtn');
+        const old = btn.innerHTML;
+        btn.innerHTML = '<i data-lucide="check" class="icon"></i>';
+        refreshIcons();
+        setTimeout(() => { btn.innerHTML = old; refreshIcons(); }, 1200);
+      });
+    });
+
+    // ---- Session control ----
+    async function sessionAction(path) {
+      const errEl = document.getElementById('sessionErr');
+      hideError(errEl);
+      try {
+        const { quiz: q } = await API.post(`/api/quizzes/${quizId}/${path}`);
+        quiz = q;
+        render();
+      } catch (err) {
+        showError(errEl, err.message);
+      }
+    }
+    document.getElementById('openLobbyBtn').addEventListener('click', () => sessionAction('open-lobby'));
+    document.getElementById('startBtn').addEventListener('click', () => sessionAction('start'));
+    document.getElementById('endBtn').addEventListener('click', () => sessionAction('end'));
+    document.getElementById('resetBtn').addEventListener('click', () => sessionAction('reset'));
+
+    // ---- Async quiz control ----
+    async function asyncAction(path, body) {
+      const errEl = document.getElementById('asyncErr');
+      hideError(errEl);
+      try {
+        const { quiz: q } = await API.post(`/api/quizzes/${quizId}/${path}`, body);
+        quiz = q;
+        render();
+        if (quiz.status === 'open') startAsyncPolling();
+      } catch (err) {
+        showError(errEl, err.message);
+      }
+    }
+
+    document.getElementById('asyncMinutesInput').addEventListener('change', (e) => {
+      const minutes = Number(e.target.value);
+      if (!minutes || minutes <= 0) return;
+      asyncAction('async-settings', { minutes });
+    });
+    document.getElementById('publishAsyncBtn').addEventListener('click', () => {
+      const minutes = Number(document.getElementById('asyncMinutesInput').value) || 5;
+      asyncAction('async-settings', { minutes }).then(() => asyncAction('async/publish'));
+    });
+    document.getElementById('closeAsyncBtn').addEventListener('click', () => asyncAction('async/close'));
+    document.getElementById('reopenAsyncBtn').addEventListener('click', () => asyncAction('async/reopen'));
+    document.getElementById('resetAsyncBtn').addEventListener('click', () => {
+      if (!confirm('This clears everyone\'s responses so far. Continue?')) return;
+      asyncAction('reset');
+    });
+
+    // ---- Bulk import ----
+    const bulkModal = document.getElementById('bulkModal');
+    let parsedBulkQuestions = [];
+
+    document.getElementById('bulkImportBtn').addEventListener('click', () => {
+      document.getElementById('bulkText').value = '';
+      document.getElementById('bulkPreview').innerHTML = '';
+      document.getElementById('bulkAddBtn').classList.add('hidden');
+      hideError(document.getElementById('bulkErr'));
+      parsedBulkQuestions = [];
+      bulkModal.classList.remove('hidden');
+    });
+    document.getElementById('bulkCancelBtn').addEventListener('click', () => bulkModal.classList.add('hidden'));
+
+    // Detects "…question stem… A) opt1 B) opt2 C) opt3 D) opt4" all on ONE line
+    // (the format produced by pasting from Word/PDF/exam banks) and splits it
+    // into { question, options }. Returns null if the line isn't in that shape.
+    function splitInlineOptions(line) {
+      const expected = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const regex = /(^|\s)([A-Za-z])\)\s*/g;
+      let m;
+      const hits = [];
+      while ((m = regex.exec(line)) !== null) {
+        hits.push({
+          letter: m[2].toUpperCase(),
+          letterStart: m.index + m[1].length,
+          contentStart: regex.lastIndex,
+        });
+      }
+      let run = [];
+      for (const h of hits) {
+        if (h.letter === expected[run.length]) run.push(h);
+        else if (h.letter === 'A') run = [h];
+      }
+      if (run.length < 2) return null;
+      const question = line.slice(0, run[0].letterStart).trim();
+      if (!question) return null;
+      const options = run.map((h, i) => {
+        const end = i + 1 < run.length ? run[i + 1].letterStart : line.length;
+        return line.slice(h.contentStart, end).trim();
+      });
+      return { question, options };
+    }
+
+    function parseBulkText(text) {
+      const blocks = text.split(/\n\s*\n+/).map(b => b.trim()).filter(Boolean);
+      const results = [];
+      blocks.forEach((block, blockIndex) => {
+        const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+        const textLines = [];
+        let type = null, answer = null, timeLimit = 20, topic = '', imageUrl = '', tolerance = 0;
+        const options = [];
+
+        lines.forEach((line) => {
+          let m;
+          if ((m = line.match(/^Q:\s*(.+)$/i))) {
+            const inline = splitInlineOptions(m[1]);
+            if (inline) { textLines.push(inline.question); options.push(...inline.options); }
+            else { textLines.push(m[1]); }
+            return;
+          }
+          if ((m = line.match(/^([A-Za-z])[).]\s*(.+)$/))) { options.push(m[2].trim()); return; }
+          if ((m = line.match(/^TYPE:\s*(\w+)$/i))) { type = m[1].toLowerCase(); return; }
+          if ((m = line.match(/^ANSWER:\s*(.+)$/i))) { answer = m[1].trim(); return; }
+          if ((m = line.match(/^TIME:\s*(\d+)$/i))) { timeLimit = Number(m[1]); return; }
+          if ((m = line.match(/^TOPIC:\s*(.+)$/i))) { topic = m[1].trim(); return; }
+          if ((m = line.match(/^IMAGE:\s*(.+)$/i))) { imageUrl = m[1].trim(); return; }
+          if ((m = line.match(/^TOLERANCE:\s*([\d.]+)$/i))) { tolerance = Number(m[1]); return; }
+          // Anything unrecognized before any prefixed line is treated as question text
+          if (options.length === 0 && type === null && answer === null) textLines.push(line);
+        });
+
+        const qtext = textLines.join(' ').trim();
+        if (!qtext) { results.push({ error: 'Could not find question text.', raw: block }); return; }
+
+        // Infer type if not explicit
+        if (!type) {
+          if (options.length >= 2) type = 'mcq';
+          else if (answer && ['true', 'false'].includes(answer.toLowerCase())) type = 'truefalse';
+          else if (answer && !isNaN(Number(answer))) type = 'numeric';
+          else type = 'typed';
+        }
+
+        const q = { type, text: qtext, timeLimit, topic, imageUrl, options: [], items: [], correctAnswer: '', tolerance };
+
+        if (type === 'mcq') {
+          q.options = options;
+          if (options.length < 2) { results.push({ error: 'Needs at least two "A)"-style options.', raw: block }); return; }
+          if (!answer) { results.push({ error: 'Missing ANSWER line.', raw: block }); return; }
+          // ANSWER can be a letter (A/B/C…) or the exact option text
+          const letterIdx = answer.length === 1 ? answer.toUpperCase().charCodeAt(0) - 65 : -1;
+          if (letterIdx >= 0 && letterIdx < options.length) q.correctAnswer = options[letterIdx];
+          else if (options.includes(answer)) q.correctAnswer = answer;
+          else { results.push({ error: `ANSWER "${answer}" doesn't match any option.`, raw: block }); return; }
+        } else if (type === 'truefalse') {
+          if (!answer || !['true', 'false'].includes(answer.toLowerCase())) { results.push({ error: 'ANSWER must be True or False.', raw: block }); return; }
+          q.correctAnswer = answer;
+        } else if (type === 'numeric') {
+          if (!answer || isNaN(Number(answer))) { results.push({ error: 'ANSWER must be a number.', raw: block }); return; }
+          q.correctAnswer = answer;
+        } else if (type === 'ordering') {
+          q.items = options;
+          if (options.length < 2) { results.push({ error: 'Needs at least two "A)"-style items, in correct order.', raw: block }); return; }
+        } else {
+          // typed
+          if (!answer) { results.push({ error: 'Missing ANSWER line.', raw: block }); return; }
+          q.correctAnswer = answer;
+        }
+
+        results.push({ question: q });
+      });
+      return results;
+    }
+
+    document.getElementById('bulkParseBtn').addEventListener('click', () => {
+      const errEl = document.getElementById('bulkErr');
+      hideError(errEl);
+      const text = document.getElementById('bulkText').value;
+      if (!text.trim()) { showError(errEl, 'Paste some questions first.'); return; }
+
+      const parsed = parseBulkText(text);
+      const valid = parsed.filter(r => r.question);
+      const invalid = parsed.filter(r => r.error);
+      parsedBulkQuestions = valid.map(r => r.question);
+
+      const previewEl = document.getElementById('bulkPreview');
+      previewEl.innerHTML = `
+    <p class="success-text">${valid.length} question${valid.length === 1 ? '' : 's'} parsed successfully.</p>
+    ${invalid.length ? `<p class="error-text">${invalid.length} block${invalid.length === 1 ? '' : 's'} had a problem:</p>
+      ${invalid.map(r => `<div class="card question-card" style="margin-bottom:8px;"><div><div class="q-meta">${escapeHtml(r.error)}</div><div class="q-text" style="font-size:13px;">${escapeHtml(r.raw.slice(0, 80))}${r.raw.length > 80 ? '…' : ''}</div></div></div>`).join('')}` : ''}
+    ${valid.length ? `<div class="mt-8">${valid.map(r => `
+      <div class="question-card card" style="margin-bottom:8px;"><div><div class="q-type">${labelForType(r.question.type)} · ${r.question.timeLimit}s</div><div class="q-text">${escapeHtml(r.question.text)}</div></div></div>`).join('')}</div>` : ''}
+  `;
+      document.getElementById('bulkAddBtn').classList.toggle('hidden', valid.length === 0);
+    });
+
+    document.getElementById('bulkAddBtn').addEventListener('click', async () => {
+      const errEl = document.getElementById('bulkErr');
+      hideError(errEl);
+      const btn = document.getElementById('bulkAddBtn');
+      btn.disabled = true; btn.textContent = 'Adding…';
+      try {
+        const res = await API.post(`/api/quizzes/${quizId}/questions/bulk`, { questions: parsedBulkQuestions });
+        quiz = res.quiz;
+        render();
+        bulkModal.classList.add('hidden');
+      } catch (err) {
+        showError(errEl, err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Add all questions';
+      }
+    });
+
+    // ---- Skip to next question ----
+    document.getElementById('skipBtn').addEventListener('click', () => sessionAction('skip-question'));
+
+    // ---- Add question modal ----
+    const modal = document.getElementById('modalBackdrop');
+    document.getElementById('addQuestionBtn').addEventListener('click', () => {
+      document.getElementById('questionForm').reset();
+      document.getElementById('qTime').value = 20;
+      document.getElementById('qTolerance').value = 0;
+      toggleTypeFields();
+      modal.classList.remove('hidden');
+    });
+    document.getElementById('cancelModalBtn').addEventListener('click', () => modal.classList.add('hidden'));
+    document.getElementById('qType').addEventListener('change', toggleTypeFields);
+
+    function toggleTypeFields() {
+      const type = document.getElementById('qType').value;
+      document.getElementById('mcqOptions').classList.toggle('hidden', type !== 'mcq');
+      document.getElementById('orderingOptions').classList.toggle('hidden', type !== 'ordering');
+      document.getElementById('correctAnswerField').classList.toggle('hidden', type === 'ordering');
+      document.getElementById('toleranceField').classList.toggle('hidden', type !== 'numeric');
+      const correctInput = document.getElementById('qCorrect');
+      const help = document.getElementById('correctHelp');
+      if (type === 'truefalse') { correctInput.placeholder = 'True or False'; help.textContent = ''; }
+      else if (type === 'typed') { correctInput.placeholder = 'Abuja|abuja city'; help.textContent = 'Separate several accepted answers with a "|".'; }
+      else if (type === 'numeric') { correctInput.placeholder = 'e.g. 3.14'; help.textContent = 'Set an allowed margin of error below if needed.'; }
+      else { correctInput.placeholder = 'Must match one option exactly'; help.textContent = ''; }
+    }
+
+    document.getElementById('questionForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('qErr');
+      hideError(errEl);
+      const type = document.getElementById('qType').value;
+      const text = document.getElementById('qText').value.trim();
+      const imageUrl = document.getElementById('qImage').value.trim();
+      const topic = document.getElementById('qTopic').value.trim();
+      const correctAnswer = document.getElementById('qCorrect').value.trim();
+      const tolerance = Number(document.getElementById('qTolerance').value) || 0;
+      const timeLimit = Number(document.getElementById('qTime').value) || 20;
+      let options = [];
+      let items = [];
+
+      if (type === 'mcq') {
+        options = Array.from(document.querySelectorAll('.opt-input')).map(i => i.value.trim()).filter(Boolean);
+        if (options.length < 2) { showError(errEl, 'Add at least two options.'); return; }
+        if (!options.includes(correctAnswer)) { showError(errEl, 'Correct answer must match one option exactly.'); return; }
+      } else if (type === 'truefalse') {
+        if (!['true', 'false'].includes(correctAnswer.toLowerCase())) { showError(errEl, 'Correct answer must be True or False.'); return; }
+      } else if (type === 'ordering') {
+        items = Array.from(document.querySelectorAll('.order-input')).map(i => i.value.trim()).filter(Boolean);
+        if (items.length < 2) { showError(errEl, 'Add at least two items to order.'); return; }
+      } else if (type === 'numeric') {
+        if (correctAnswer === '' || isNaN(Number(correctAnswer))) { showError(errEl, 'Correct answer must be a number.'); return; }
+      } else if (type === 'typed') {
+        if (!correctAnswer) { showError(errEl, 'Add at least one accepted answer.'); return; }
+      }
+
+      const btn = document.getElementById('saveQBtn');
+      btn.disabled = true; btn.textContent = 'Adding…';
+      try {
+        const { quiz: q } = await API.post(`/api/quizzes/${quizId}/questions`, { type, text, options, items, correctAnswer, timeLimit, imageUrl, topic, tolerance });
+        quiz = q;
+        render();
+        modal.classList.add('hidden');
+      } catch (err) {
+        showError(errEl, err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Add question';
+      }
+    });
+
+    async function deleteQuestion(qid) {
+      if (!confirm('Remove this question?')) return;
+      try {
+        const { quiz: q } = await API.del(`/api/quizzes/${quizId}/questions/${qid}`);
+        quiz = q;
+        render();
+      } catch (err) { alert(err.message); }
+    }
+
+    // ---- Analytics ----
+    const statsModal = document.getElementById('statsModal');
+    document.getElementById('statsBtn').addEventListener('click', async () => {
+      statsModal.classList.remove('hidden');
+      document.getElementById('statsBody').innerHTML = '<p class="muted">Loading…</p>';
+      try {
+        const stats = await API.get(`/api/quizzes/${quizId}/stats`);
+        renderStats(stats);
+      } catch (err) {
+        document.getElementById('statsBody').innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
+      }
+    });
+    document.getElementById('closeStatsBtn').addEventListener('click', () => statsModal.classList.add('hidden'));
+
+    function accClass(acc) { return acc === null ? 'mid' : acc >= 70 ? 'good' : acc >= 40 ? 'mid' : 'bad'; }
+
+    function renderStats(stats) {
+      const body = document.getElementById('statsBody');
+      if (stats.totalParticipants === 0) {
+        body.innerHTML = '<p class="muted">No live attempts yet — analytics fill in once students play.</p>';
+      } else {
+        body.innerHTML = `
+      <p class="muted mb-16">${stats.totalParticipants} student${stats.totalParticipants === 1 ? '' : 's'} played this session.</p>
+      <h4>Per question</h4>
+      ${stats.perQuestion.map((q, i) => `
+        <div class="stat-row">
+          <div class="stat-head"><span>${i + 1}. ${escapeHtml(q.text)}</span><span>${q.accuracy === null ? '—' : q.accuracy + '%'}</span></div>
+          <div class="stat-bar-track"><div class="stat-bar-fill ${accClass(q.accuracy)}" style="width:${q.accuracy || 0}%;"></div></div>
+        </div>`).join('')}
+      ${stats.topicBreakdown.length ? `
+        <h4 class="mt-24">Weakest topics</h4>
+        ${stats.topicBreakdown.map(t => `
+          <div class="stat-row">
+            <div class="stat-head"><span>${escapeHtml(t.topic)}</span><span>${t.accuracy === null ? '—' : t.accuracy + '%'}</span></div>
+            <div class="stat-bar-track"><div class="stat-bar-fill ${accClass(t.accuracy)}" style="width:${t.accuracy || 0}%;"></div></div>
+          </div>`).join('')}` : ''}
+    `;
+      }
+      if (stats.practiceStats && stats.practiceStats.attempts > 0) {
+        body.innerHTML += `<p class="muted mt-16"><i data-lucide="graduation-cap" class="icon"></i> ${stats.practiceStats.attempts} solo practice attempt${stats.practiceStats.attempts === 1 ? '' : 's'}, averaging ${stats.practiceStats.avgScorePct}% correct.</p>`;
+        refreshIcons();
+      }
+    }
+
+    // ---- Live updates ----
+    function connectSocket() {
+      socket = io();
+      socket.emit('join-room', { code: quiz.code });
+      socket.on('lobby-update', ({ participants, status }) => {
+        quiz.participants = participants.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, score: 0, totalTimeMs: 0, answers: [] }));
+        quiz.status = status;
+        render();
+      });
+      socket.on('leaderboard-update', ({ leaderboard }) => {
+        renderLeaderboard(leaderboard);
+      });
+      socket.on('question-start', () => {
+        quiz.status = 'live';
+        document.getElementById('statusLabel').textContent = STATUS_LABEL.live;
+        document.getElementById('progressBox').classList.remove('hidden');
+      });
+      socket.on('answer-progress', (progress) => renderAnswerProgress(progress));
+      socket.on('quiz-end', ({ leaderboard }) => {
+        quiz.status = 'finished';
+        document.getElementById('progressBox').classList.add('hidden');
+        render();
+        renderLeaderboard(leaderboard);
+      });
+    }
+
+    loadQuiz();
+  </script>
+</body>
+
+</html>

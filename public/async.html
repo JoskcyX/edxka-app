@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Take the quiz — EDxKa</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div class="play-wrap">
+  <div class="flex justify-between items-center" style="position:fixed;top:16px;left:16px;right:16px;">
+    <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"></button>
+  </div>
+
+  <!-- Step 1: enter code + name/phone -->
+  <div class="card play-card fade-in" id="startStep">
+    <div class="eyebrow" style="margin-bottom:14px;"><i data-lucide="clock" class="icon"></i> Self-paced quiz</div>
+    <h2 style="margin:0 0 4px;" id="quizTitlePreview">Take the quiz</h2>
+    <p class="muted mb-24" id="quizSubtitle">Enter your details below. Once you start, the clock doesn't stop.</p>
+    <form id="startForm" style="text-align:left;">
+      <div class="field">
+        <label for="codeInput">Quiz code</label>
+        <input type="text" id="codeInput" maxlength="6" style="text-transform:uppercase;letter-spacing:2px;font-weight:800;" required />
+      </div>
+      <div class="field">
+        <label for="nameInput">Your name</label>
+        <input type="text" id="nameInput" required />
+      </div>
+      <div class="field">
+        <label for="phoneInput">Phone number</label>
+        <input type="tel" id="phoneInput" required />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="startBtn">Start quiz</button>
+      <div class="error-text hidden" id="startErr"></div>
+    </form>
+  </div>
+
+  <!-- Step 2: question by question, with an overall countdown -->
+  <div class="card play-card hidden" id="questionStep">
+    <div class="flex justify-between items-center mb-8">
+      <span class="muted" id="progressLabel">Question 1 of 5</span>
+      <div class="timer-ring" id="timerRing" style="width:56px;height:56px;font-size:16px;margin:0;">5:00</div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%;"></div></div>
+    <div class="flex justify-between items-center mt-8 mb-16">
+      <span></span>
+      <span class="badge badge-muted" id="topicBadge"></span>
+    </div>
+    <img id="questionImage" class="question-image hidden" alt="" />
+    <h2 id="questionText" style="margin:0 0 24px;text-align:left;font-size:22px;"></h2>
+    <div class="options-grid" id="optionsGrid"></div>
+    <div id="typedAnswerBox" class="hidden mt-8"><input type="text" id="typedAnswerInput" placeholder="Type your answer…" /></div>
+    <div id="numericAnswerBox" class="hidden mt-8"><input type="number" step="any" id="numericAnswerInput" placeholder="Type a number…" /></div>
+    <div id="orderingBox" class="hidden order-list"></div>
+    <button class="btn btn-primary btn-block mt-24" id="nextBtn">Next question →</button>
+    <p class="error-text hidden mt-16" id="submitErr"></p>
+  </div>
+
+  <!-- Step 3: results / review -->
+  <div class="card play-card hidden" id="resultsStep" style="max-width:640px;">
+    <h2 style="margin:0 0 8px;" id="resultsHeading">Nice work!</h2>
+    <p class="muted mb-8" id="scoreLine"></p>
+    <div class="progress-track mb-24"><div class="progress-fill" id="scoreFill"></div></div>
+    <div id="reviewList" style="text-align:left;"></div>
+    <a href="/" class="btn btn-outline btn-block mt-24">Back to home</a>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/theme.js"></script>
+<script>
+mountThemeToggle(document.getElementById('themeToggle'));
+
+const params = new URLSearchParams(window.location.search);
+const prefillCode = (params.get('code') || '').toUpperCase();
+if (prefillCode) document.getElementById('codeInput').value = prefillCode;
+
+const steps = ['startStep', 'questionStep', 'resultsStep'];
+function showStep(id) { steps.forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id)); }
+
+let questions = [];
+let quizCode = null;
+let quizTitle = '';
+let participantId = null;
+let deadline = null;
+let index = 0;
+let collected = []; // { questionId, answer }
+let orderCurrent = [];
+let timerInterval = null;
+let submitting = false;
+
+// Remember the in-progress attempt so a refresh (or a flaky connection)
+// resumes the SAME question set and the SAME deadline instead of losing
+// progress or getting a fresh clock.
+function sessionKey(code) { return `edxka_async_${code}`; }
+function saveSession(code, data) { try { localStorage.setItem(sessionKey(code), JSON.stringify(data)); } catch {} }
+function loadSession(code) { try { return JSON.parse(localStorage.getItem(sessionKey(code)) || 'null'); } catch { return null; } }
+function clearSession(code) { try { localStorage.removeItem(sessionKey(code)); } catch {} }
+
+if (prefillCode) {
+  const saved = loadSession(prefillCode);
+  if (saved && saved.name) document.getElementById('nameInput').value = saved.name;
+  if (saved && saved.phone) document.getElementById('phoneInput').value = saved.phone;
+}
+
+document.getElementById('codeInput').addEventListener('input', async (e) => {
+  const code = e.target.value.trim().toUpperCase();
+  const preview = document.getElementById('quizTitlePreview');
+  if (code.length < 4) { preview.textContent = 'Take the quiz'; return; }
+  try {
+    const res = await fetch(`/api/quizzes/by-code/${code}/async`);
+    const data = await res.json();
+    if (res.ok) {
+      preview.textContent = data.title;
+      if (data.status !== 'open') {
+        document.getElementById('quizSubtitle').textContent = data.status === 'closed'
+          ? 'This quiz is closed and no longer accepting responses.'
+          : 'This quiz has not been published yet — check back later.';
+      } else {
+        document.getElementById('quizSubtitle').textContent = `You'll have ${Math.round(data.durationSec / 60)} minute(s) once you start, across ${data.questionCount} question(s).`;
+      }
+    }
+  } catch {}
+});
+
+document.getElementById('startForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('startErr');
+  hideErr(errEl);
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  const name = document.getElementById('nameInput').value.trim();
+  const phone = document.getElementById('phoneInput').value.trim();
+  if (!code || !name || !phone) return;
+
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true; btn.textContent = 'Starting…';
+  try {
+    const saved = loadSession(code);
+    const res = await fetch(`/api/quizzes/by-code/${code}/async/start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, participantId: saved && saved.participantId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not start this quiz.');
+
+    questions = data.questions;
+    quizTitle = data.title;
+    quizCode = code;
+    participantId = data.participantId;
+    deadline = data.deadline;
+    saveSession(code, { participantId, name, phone });
+
+    // Resume: if we already answered some questions in a previous
+    // page-load, `collected` intentionally resets — we keep it simple and
+    // ask the student to answer again for anything not yet submitted,
+    // since only a final submit persists a score.
+    index = 0;
+    collected = [];
+    showQuestion();
+    showStep('questionStep');
+    startTimer();
+  } catch (err) {
+    showErr(errEl, err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Start quiz';
+  }
+});
+
+function startTimer() {
+  clearInterval(timerInterval);
+  const ring = document.getElementById('timerRing');
+  function tick() {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      ring.textContent = '0:00';
+      clearInterval(timerInterval);
+      finishAsync(true);
+      return;
+    }
+    const totalSec = Math.ceil(remainingMs / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    ring.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    ring.classList.toggle('urgent', totalSec <= 30);
+  }
+  tick();
+  timerInterval = setInterval(tick, 250);
+}
+
+function showQuestion() {
+  const q = questions[index];
+  document.getElementById('progressLabel').textContent = `Question ${index + 1} of ${questions.length}`;
+  document.getElementById('progressFill').style.width = `${Math.round((index / questions.length) * 100)}%`;
+  document.getElementById('topicBadge').textContent = q.topic || '';
+  document.getElementById('topicBadge').style.visibility = q.topic ? 'visible' : 'hidden';
+  document.getElementById('questionText').textContent = q.text;
+
+  const img = document.getElementById('questionImage');
+  if (q.imageUrl) { img.src = q.imageUrl; img.classList.remove('hidden'); } else { img.classList.add('hidden'); }
+
+  ['optionsGrid', 'typedAnswerBox', 'numericAnswerBox', 'orderingBox'].forEach(id => document.getElementById(id).classList.add('hidden'));
+
+  if (q.type === 'typed') {
+    document.getElementById('typedAnswerBox').classList.remove('hidden');
+    document.getElementById('typedAnswerInput').value = '';
+  } else if (q.type === 'numeric') {
+    document.getElementById('numericAnswerBox').classList.remove('hidden');
+    document.getElementById('numericAnswerInput').value = '';
+  } else if (q.type === 'ordering') {
+    orderCurrent = [...q.items];
+    renderOrderList();
+    document.getElementById('orderingBox').classList.remove('hidden');
+  } else {
+    const grid = document.getElementById('optionsGrid');
+    grid.classList.remove('hidden');
+    grid.innerHTML = q.options.map(opt => `<button type="button" class="option-btn" data-value="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`).join('');
+    grid.querySelectorAll('.option-btn').forEach(b => b.addEventListener('click', () => {
+      grid.querySelectorAll('.option-btn').forEach(x => x.classList.remove('selected'));
+      b.classList.add('selected');
+    }));
+  }
+
+  document.getElementById('nextBtn').textContent = index === questions.length - 1 ? 'Finish & submit' : 'Next question →';
+}
+
+function renderOrderList() {
+  document.getElementById('orderingBox').innerHTML = orderCurrent.map((item, i) => `
+    <div class="order-item">
+      <span class="order-num">${i + 1}</span>
+      <span>${escapeHtml(item)}</span>
+      <span class="order-controls">
+        <button type="button" onclick="moveOrder(${i}, -1)" ${i === 0 ? 'disabled' : ''} aria-label="Move up"><i data-lucide="chevron-up" class="icon"></i></button>
+        <button type="button" onclick="moveOrder(${i}, 1)" ${i === orderCurrent.length - 1 ? 'disabled' : ''} aria-label="Move down"><i data-lucide="chevron-down" class="icon"></i></button>
+      </span>
+    </div>`).join('');
+  refreshIcons();
+}
+function moveOrder(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= orderCurrent.length) return;
+  [orderCurrent[i], orderCurrent[j]] = [orderCurrent[j], orderCurrent[i]];
+  renderOrderList();
+}
+
+function currentAnswer() {
+  const q = questions[index];
+  if (q.type === 'typed') return document.getElementById('typedAnswerInput').value.trim();
+  if (q.type === 'numeric') return document.getElementById('numericAnswerInput').value;
+  if (q.type === 'ordering') return orderCurrent;
+  const sel = document.querySelector('.option-btn.selected');
+  return sel ? sel.dataset.value : '';
+}
+
+document.getElementById('nextBtn').addEventListener('click', async () => {
+  const q = questions[index];
+  collected.push({ questionId: q.id, answer: currentAnswer() });
+  if (index < questions.length - 1) {
+    index += 1;
+    showQuestion();
+  } else {
+    await finishAsync(false);
+  }
+});
+
+async function finishAsync(timedOut) {
+  if (submitting) return;
+  submitting = true;
+  clearInterval(timerInterval);
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = timedOut ? "Time's up — submitting…" : 'Submitting…';
+  hideErr(document.getElementById('submitErr'));
+
+  // If time ran out mid-question, whatever's on screen right now still
+  // counts as long as it hasn't already been pushed to `collected`.
+  if (timedOut && collected.length < questions.length) {
+    const q = questions[index];
+    if (q && !collected.find(c => c.questionId === q.id)) {
+      collected.push({ questionId: q.id, answer: currentAnswer() });
+    }
+  }
+
+  try {
+    const res = await fetch(`/api/quizzes/by-code/${quizCode}/async/submit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participantId, answers: collected }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not submit your answers.');
+    clearSession(quizCode);
+    showResults(data, timedOut);
+  } catch (err) {
+    submitting = false;
+    btn.disabled = false; btn.textContent = 'Try submitting again';
+    showErr(document.getElementById('submitErr'), err.message);
+  }
+}
+
+function showResults(data, timedOut) {
+  const pct = Math.round((data.score / data.total) * 100);
+  document.getElementById('resultsHeading').innerHTML = timedOut
+    ? '<i data-lucide="alarm-clock" class="icon icon-lg"></i> Time\'s up!'
+    : '<i data-lucide="party-popper" class="icon icon-lg"></i> Nice work!';
+  document.getElementById('scoreLine').textContent = `You got ${data.score} out of ${data.total} correct (${pct}%) on "${quizTitle}". Your tutor can see your result.`;
+  document.getElementById('scoreFill').style.width = pct + '%';
+
+  document.getElementById('reviewList').innerHTML = data.results.map((r, i) => {
+    const q = questions.find(qq => qq.id === r.questionId);
+    const mine = collected.find(c => c.questionId === r.questionId);
+    const yourAnswer = mine ? (Array.isArray(mine.answer) ? mine.answer.join(' → ') : mine.answer) : '';
+    const correctAnswer = Array.isArray(r.correctAnswer) ? r.correctAnswer.join(' → ') : r.correctAnswer;
+    return `
+      <div class="card question-card" style="margin-bottom:12px;">
+        <div style="width:100%;">
+          <div class="q-type">${r.correct ? '<i data-lucide="check-circle" class="icon"></i> Correct' : '<i data-lucide="x-circle" class="icon"></i> Incorrect'}</div>
+          <div class="q-text">${i + 1}. ${escapeHtml(q ? q.text : '')}</div>
+          <div class="q-meta">Your answer: ${escapeHtml(String(yourAnswer || '—'))}</div>
+          ${!r.correct ? `<div class="q-meta">Correct answer: ${escapeHtml(String(correctAnswer))}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  refreshIcons();
+
+  showStep('resultsStep');
+  if (pct >= 70) { Sound.finish(); fireConfetti(70); } else { Sound.incorrect(); }
+}
+
+function showErr(el, msg) { el.textContent = msg; el.classList.remove('hidden'); }
+function hideErr(el) { el.classList.add('hidden'); el.textContent = ''; }
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

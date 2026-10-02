@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Your quizzes — EDxKa</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div class="container">
+  <nav class="nav">
+    <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+    <div class="flex items-center gap-12">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"></button>
+      <button class="btn btn-outline" id="signOutBtn">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="page-header">
+    <h1>Your quizzes</h1>
+    <p class="muted">Create a quiz, add your questions, then share the link and press start.</p>
+  </div>
+
+  <form class="card new-quiz-bar" id="newQuizForm" style="flex-wrap:wrap;">
+    <input type="text" id="newQuizTitle" placeholder="e.g. SS2 Chemistry — Periodic Table" required style="flex:2;min-width:200px;" />
+    <input type="text" id="newQuizSubject" placeholder="Subject (optional)" style="flex:1;min-width:140px;" />
+    <select id="newQuizType" style="flex:1;min-width:200px;">
+      <option value="sync">Live session (everyone at once)</option>
+      <option value="async">Self-paced (share a link, any time)</option>
+    </select>
+    <button type="submit" class="btn btn-primary" id="newQuizBtn">+ New quiz</button>
+  </form>
+  <div class="error-text hidden" id="errBox"></div>
+
+  <div class="flex gap-8 mb-16" id="subjectFilters" style="flex-wrap:wrap;"></div>
+  <div id="quizList"></div>
+</div>
+
+<script src="/api.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/theme.js"></script>
+<script>
+API.requireAuth();
+mountThemeToggle(document.getElementById('themeToggle'));
+
+const listEl = document.getElementById('quizList');
+const errBox = document.getElementById('errBox');
+let allQuizzes = [];
+let activeSubject = 'All';
+
+const STATUS_LABEL = {
+  sync: {
+    draft: { text: 'Draft', cls: 'badge-muted' },
+    lobby: { text: 'Lobby open', cls: 'badge-teal' },
+    live: { text: 'Live now', cls: 'badge-orange' },
+    finished: { text: 'Finished', cls: 'badge-muted' },
+  },
+  async: {
+    draft: { text: 'Draft', cls: 'badge-muted' },
+    open: { text: 'Open — accepting responses', cls: 'badge-teal' },
+    closed: { text: 'Closed', cls: 'badge-muted' },
+  },
+};
+
+async function loadQuizzes() {
+  hideError(errBox);
+  try {
+    const { quizzes } = await API.get('/api/quizzes');
+    allQuizzes = quizzes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    renderFilters();
+    renderQuizzes();
+  } catch (err) {
+    showError(errBox, err.message);
+  }
+}
+
+function renderFilters() {
+  const subjects = ['All', ...new Set(allQuizzes.map(q => q.subject).filter(Boolean))];
+  if (subjects.length <= 1) { document.getElementById('subjectFilters').innerHTML = ''; return; }
+  document.getElementById('subjectFilters').innerHTML = subjects.map(s => `
+    <button class="filter-pill ${s === activeSubject ? 'active' : ''}" data-subject="${escapeHtml(s)}">${escapeHtml(s)}</button>
+  `).join('');
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => { activeSubject = btn.dataset.subject; renderFilters(); renderQuizzes(); });
+  });
+}
+
+function renderQuizzes() {
+  const quizzes = activeSubject === 'All' ? allQuizzes : allQuizzes.filter(q => q.subject === activeSubject);
+  if (quizzes.length === 0) {
+    listEl.innerHTML = `<div class="card empty-state">No quizzes yet — create your first one above.</div>`;
+    return;
+  }
+  listEl.innerHTML = quizzes.map((q) => {
+    const type = q.type || 'sync';
+    const status = (STATUS_LABEL[type] || STATUS_LABEL.sync)[q.status] || STATUS_LABEL.sync.draft;
+    return `
+      <div class="card quiz-row fade-in" onclick="window.location.href='/quiz.html?id=${q.id}'">
+        <div>
+          <div class="flex items-center gap-8 mb-8">
+            <h3 style="margin:0;">${escapeHtml(q.title)}</h3>
+            ${q.subject ? `<span class="subject-pill">${escapeHtml(q.subject)}</span>` : ''}
+            <span class="badge badge-muted" style="font-size:11px;">${type === 'async' ? '<i data-lucide=\'clock\' class=\'icon\' style=\'width:12px;height:12px;\'></i> Self-paced' : '<i data-lucide=\'zap\' class=\'icon\' style=\'width:12px;height:12px;\'></i> Live'}</span>
+          </div>
+          <div class="code">Code <strong>${q.code}</strong> · ${q.questions.length} question${q.questions.length === 1 ? '' : 's'}</div>
+        </div>
+        <span class="badge ${status.cls}">${status.text}</span>
+      </div>`;
+  }).join('');
+  refreshIcons();
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+document.getElementById('newQuizForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('newQuizBtn');
+  const titleInput = document.getElementById('newQuizTitle');
+  const subjectInput = document.getElementById('newQuizSubject');
+  const typeInput = document.getElementById('newQuizType');
+  hideError(errBox);
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const { quiz } = await API.post('/api/quizzes', { title: titleInput.value.trim(), subject: subjectInput.value.trim(), type: typeInput.value });
+    window.location.href = `/quiz.html?id=${quiz.id}`;
+  } catch (err) {
+    showError(errBox, err.message);
+    btn.disabled = false; btn.textContent = '+ New quiz';
+  }
+});
+
+document.getElementById('signOutBtn').addEventListener('click', () => API.signOut());
+
+loadQuizzes();
+</script>
+</body>
+</html>

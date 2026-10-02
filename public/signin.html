@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign in — EDxKa</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="dot" style="width:16px;height:16px;background:#F7C6B2;top:14%;left:12%;"></div>
+  <div class="dot" style="width:14px;height:14px;background:#BFE9DE;top:20%;right:10%;"></div>
+  <div class="dot" style="width:16px;height:16px;background:#BFE9DE;bottom:16%;left:18%;"></div>
+  <div class="dot" style="width:14px;height:14px;background:#F3E3AF;bottom:12%;right:16%;"></div>
+
+  <div class="card auth-card">
+    <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+    <h2 style="margin:18px 0 4px;font-size:26px;">Welcome back, tutor</h2>
+    <p class="muted" style="margin-bottom:26px;">Sign in to build quizzes and run live sessions.</p>
+
+    <form id="signinForm">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="email" />
+      </div>
+      <div class="field">
+        <div class="flex justify-between items-center">
+          <label for="password" style="margin-bottom:0;">Password</label>
+          <a href="/forgot-password.html" style="font-size:13px;font-weight:700;color:var(--orange);">Forgot password?</a>
+        </div>
+        <input type="password" id="password" required autocomplete="current-password" style="margin-top:6px;" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Sign in</button>
+      <div class="error-text hidden" id="errBox"></div>
+    </form>
+
+    <p class="text-center mt-24">
+      <a href="/signup.html" style="color:var(--orange);font-weight:800;">New here? Create a tutor account</a>
+    </p>
+  </div>
+</div>
+
+<script src="/api.js"></script>
+<script>
+document.getElementById('signinForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const errBox = document.getElementById('errBox');
+  hideError(errBox);
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const { token, user } = await API.post('/api/auth/signin', { email, password });
+    API.setToken(token);
+    API.setUser(user);
+    window.location.href = '/dashboard.html';
+  } catch (err) {
+    showError(errBox, err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Sign in';
+  }
+});
+</script>
+</body>
+</html>

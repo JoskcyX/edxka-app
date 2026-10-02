@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — EDxKa</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .admin-table-wrap {
+      overflow-x: auto;
+    }
+
+    table.admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    table.admin-table th,
+    table.admin-table td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    table.admin-table th {
+      color: var(--ink-soft);
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+
+    table.admin-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .tab-btn {
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--ink);
+      padding: 8px 16px;
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      font-weight: 700;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .tab-btn.active {
+      background: var(--orange);
+      border-color: var(--orange);
+      color: #fff;
+    }
+
+    .empty-note {
+      color: var(--ink-soft);
+      padding: 24px 0;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <nav class="nav">
+      <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+      <div class="flex items-center gap-12">
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"></button>
+      </div>
+    </nav>
+
+    <div class="page-header">
+      <h1>Admin</h1>
+      <p class="muted">Everyone who's registered a tutor account, and every student who's joined a quiz.</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabTutors">Tutors</button>
+      <button class="tab-btn" id="tabStudents">Students</button>
+    </div>
+
+    <div class="error-text hidden" id="errBox"></div>
+
+    <div class="card" id="tutorsPanel">
+      <div class="admin-table-wrap">
+        <table class="admin-table" id="tutorsTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Quizzes created</th>
+              <th>Signed up</th>
+            </tr>
+          </thead>
+          <tbody id="tutorsBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-note hidden" id="tutorsEmpty">No tutors have signed up yet.</div>
+    </div>
+
+    <div class="card hidden" id="studentsPanel">
+      <div class="admin-table-wrap">
+        <table class="admin-table" id="studentsTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Quiz</th>
+              <th>Code</th>
+              <th>Score</th>
+              <th>Joined</th>
+            </tr>
+          </thead>
+          <tbody id="studentsBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-note hidden" id="studentsEmpty">No students have joined a quiz yet.</div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+<script src="/theme.js"></script>
+  <script>
+    mountThemeToggle(document.getElementById('themeToggle'));
+
+    const errBox = document.getElementById('errBox');
+    const tutorsPanel = document.getElementById('tutorsPanel');
+    const studentsPanel = document.getElementById('studentsPanel');
+    const tabTutors = document.getElementById('tabTutors');
+    const tabStudents = document.getElementById('tabStudents');
+
+    tabTutors.addEventListener('click', () => switchTab('tutors'));
+    tabStudents.addEventListener('click', () => switchTab('students'));
+
+    function switchTab(which) {
+      const isTutors = which === 'tutors';
+      tabTutors.classList.toggle('active', isTutors);
+      tabStudents.classList.toggle('active', !isTutors);
+      tutorsPanel.classList.toggle('hidden', !isTutors);
+      studentsPanel.classList.toggle('hidden', isTutors);
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleString();
+    }
+
+    function fmtTime(ms) {
+      if (!ms && ms !== 0) return '—';
+      return (ms / 1000).toFixed(1) + 's';
+    }
+
+    async function loadAll() {
+      try {
+        const [usersRes, participantsRes] = await Promise.all([
+          fetch('/api/admin/users'),
+          fetch('/api/admin/participants'),
+        ]);
+        if (!usersRes.ok || !participantsRes.ok) {
+          throw new Error('Request failed (' + usersRes.status + ' / ' + participantsRes.status + ')');
+        }
+        const { users } = await usersRes.json();
+        const { participants } = await participantsRes.json();
+        renderTutors(users);
+        renderStudents(participants);
+      } catch (e) {
+        errBox.textContent = 'Could not load admin data: ' + e.message;
+        errBox.classList.remove('hidden');
+      }
+    }
+
+    function renderTutors(users) {
+      const body = document.getElementById('tutorsBody');
+      const empty = document.getElementById('tutorsEmpty');
+      body.innerHTML = '';
+      if (!users.length) { empty.classList.remove('hidden'); return; }
+      empty.classList.add('hidden');
+      users.forEach((u) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td>${escapeHtml(u.name)}</td>
+      <td>${escapeHtml(u.email)}</td>
+      <td>${u.quizCount}</td>
+      <td>${fmtDate(u.createdAt)}</td>
+    `;
+        body.appendChild(tr);
+      });
+    }
+
+    function renderStudents(participants) {
+      const body = document.getElementById('studentsBody');
+      const empty = document.getElementById('studentsEmpty');
+      body.innerHTML = '';
+      if (!participants.length) { empty.classList.remove('hidden'); return; }
+      empty.classList.add('hidden');
+      participants.forEach((p) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td>${p.avatar || ''} ${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.phone)}</td>
+      <td>${escapeHtml(p.quizTitle || '')}</td>
+      <td>${escapeHtml(p.quizCode || '')}</td>
+      <td>${p.score}</td>
+      <td>${fmtDate(p.joinedAt)}</td>
+    `;
+        body.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[c]));
+    }
+
+    loadAll();
+  </script>
+</body>
+
+</html>

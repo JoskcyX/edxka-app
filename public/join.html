@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Join a quiz — EDxKa</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div class="play-wrap">
+  <div class="flex justify-between items-center" style="position:fixed;top:16px;left:16px;right:16px;">
+    <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"></button>
+  </div>
+
+  <!-- Step 1: enter code + name/phone + avatar -->
+  <div class="card play-card fade-in" id="joinStep">
+    <h2 style="margin:18px 0 4px;">Join the quiz</h2>
+    <p class="muted mb-24" id="quizTitlePreview">Enter your details below.</p>
+    <form id="joinForm" style="text-align:left;">
+      <div class="field">
+        <label for="codeInput">Quiz code</label>
+        <input type="text" id="codeInput" maxlength="6" style="text-transform:uppercase;letter-spacing:2px;font-weight:800;" required />
+      </div>
+      <div class="field">
+        <label for="nameInput">Your name</label>
+        <input type="text" id="nameInput" required />
+      </div>
+      <div class="field">
+        <label for="phoneInput">Phone number</label>
+        <input type="tel" id="phoneInput" required />
+      </div>
+      <div class="field">
+        <label>Pick an avatar</label>
+        <div class="avatar-grid" id="avatarGrid"></div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="joinBtn">Join quiz</button>
+      <div class="error-text hidden" id="joinErr"></div>
+    </form>
+    <p class="text-center mt-16" style="font-size:14px;">
+      Prefer to go at your own pace? <a href="/practice.html" style="color:var(--teal-dark);font-weight:800;">Try it solo →</a>
+    </p>
+  </div>
+
+  <!-- Step 2: waiting lobby -->
+  <div class="card play-card hidden" id="lobbyStep">
+    <div class="badge badge-teal mb-16" id="lobbyCount">1 waiting</div>
+    <h2 style="margin:0 0 8px;">You're in!</h2>
+    <p class="muted mb-24">Sit tight — the tutor will start the quiz shortly.</p>
+    <div class="lobby-grid" id="lobbyParticipants" style="text-align:left;"></div>
+  </div>
+
+  <!-- Step 3: live question -->
+  <div class="card play-card hidden" id="liveStep">
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%;"></div></div>
+    <div class="flex justify-between items-center mb-16 mt-8">
+      <span class="muted" id="progressLabel">Question 1 of 5</span>
+      <div class="timer-ring" id="timerRing" style="width:48px;height:48px;font-size:16px;margin:0;">20</div>
+    </div>
+    <div id="streakBox" class="hidden mb-16"><span class="streak-badge" id="streakBadge"><i data-lucide="flame" class="icon"></i> 2 streak</span></div>
+    <img id="questionImage" class="question-image hidden" alt="" />
+    <h2 id="questionText" style="margin:0 0 24px;text-align:left;font-size:22px;"></h2>
+    <div class="options-grid" id="optionsGrid"></div>
+    <div id="typedAnswerBox" class="hidden mt-16">
+      <input type="text" id="typedAnswerInput" placeholder="Type your answer…" />
+      <button class="btn btn-primary btn-block mt-16" id="submitTypedBtn">Submit answer</button>
+    </div>
+    <div id="numericAnswerBox" class="hidden mt-16">
+      <input type="number" step="any" id="numericAnswerInput" placeholder="Type a number…" />
+      <button class="btn btn-primary btn-block mt-16" id="submitNumericBtn">Submit answer</button>
+    </div>
+    <div id="orderingBox" class="hidden order-list"></div>
+    <button class="btn btn-primary btn-block mt-16 hidden" id="submitOrderingBtn">Submit order</button>
+    <div class="mt-16" id="answerFeedback"></div>
+  </div>
+
+  <!-- Step 4: finished -->
+  <div class="card play-card hidden" id="doneStep">
+    <h2 style="margin:0 0 8px;"><i data-lucide="party-popper" class="icon icon-lg"></i> Quiz complete!</h2>
+    <p class="muted mb-8" id="myScoreLine"></p>
+    <div class="badges-row" id="myBadges"></div>
+    <p class="muted mb-24 mt-24">Here's how the class ranked.</p>
+    <div id="finalLeaderboard" style="text-align:left;"></div>
+    <a href="/" class="btn btn-outline btn-block mt-24">Back to home</a>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/theme.js"></script>
+<script>
+mountThemeToggle(document.getElementById('themeToggle'));
+
+const AVATARS = ['🦊','🐼','🦁','🐸','🐵','🦉','🐯','🐨','🦄','🐢','🐙','🦋'];
+let selectedAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
+document.getElementById('avatarGrid').innerHTML = AVATARS.map(a => `<button type="button" class="avatar-choice ${a === selectedAvatar ? 'selected' : ''}" data-avatar="${a}">${a}</button>`).join('');
+document.querySelectorAll('.avatar-choice').forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectedAvatar = btn.dataset.avatar;
+    document.querySelectorAll('.avatar-choice').forEach(b => b.classList.toggle('selected', b === btn));
+  });
+});
+
+const steps = ['joinStep', 'lobbyStep', 'liveStep', 'doneStep'];
+function showStep(id) {
+  steps.forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id));
+}
+
+const params = new URLSearchParams(window.location.search);
+const prefillCode = (params.get('code') || '').toUpperCase();
+if (prefillCode) document.getElementById('codeInput').value = prefillCode;
+
+let socket = null;
+let quizCode = null;
+let participantId = null;
+let currentQuestion = null;
+let timerInterval = null;
+let answered = false;
+let orderCurrent = [];
+
+// Remember who we are per quiz code so leaving the tab and coming back
+// (or reopening the same join link) reconnects to the same lobby spot
+// instead of the server seeing a brand-new person.
+function sessionKey(code) { return `edxka_session_${code}`; }
+function saveSession(code, data) {
+  try { localStorage.setItem(sessionKey(code), JSON.stringify(data)); } catch {}
+}
+function loadSession(code) {
+  try { return JSON.parse(localStorage.getItem(sessionKey(code)) || 'null'); } catch { return null; }
+}
+
+if (prefillCode) {
+  const saved = loadSession(prefillCode);
+  if (saved && saved.name && saved.phone) {
+    document.getElementById('nameInput').value = saved.name;
+    document.getElementById('phoneInput').value = saved.phone;
+    if (saved.avatar) {
+      selectedAvatar = saved.avatar;
+      document.querySelectorAll('.avatar-choice').forEach(b => b.classList.toggle('selected', b.dataset.avatar === saved.avatar));
+    }
+    joinQuiz(prefillCode, saved.name, saved.phone, saved.avatar, saved.participantId, { silent: true });
+  }
+}
+
+document.getElementById('codeInput').addEventListener('input', async (e) => {
+  const code = e.target.value.trim().toUpperCase();
+  const preview = document.getElementById('quizTitlePreview');
+  if (code.length < 4) { preview.textContent = 'Enter your details below.'; return; }
+  try {
+    const res = await fetch(`/api/quizzes/by-code/${code}`);
+    if (res.ok) {
+      const data = await res.json();
+      preview.textContent = `Joining "${data.title}"`;
+    } else {
+      preview.textContent = 'Enter your details below.';
+    }
+  } catch {}
+});
+
+document.getElementById('joinForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  const name = document.getElementById('nameInput').value.trim();
+  const phone = document.getElementById('phoneInput').value.trim();
+  if (!code || !name || !phone) return;
+  const saved = loadSession(code);
+  joinQuiz(code, name, phone, selectedAvatar, saved && saved.participantId);
+});
+
+function joinQuiz(code, name, phone, avatar, savedParticipantId, opts = {}) {
+  const errEl = document.getElementById('joinErr');
+  hideErr(errEl);
+  const btn = document.getElementById('joinBtn');
+  if (!opts.silent) { btn.disabled = true; btn.textContent = 'Joining…'; }
+
+  socket = io();
+  socket.emit('join-lobby', { code, name, phone, avatar, participantId: savedParticipantId }, (res) => {
+    btn.disabled = false; btn.textContent = 'Join quiz';
+    if (res && res.error) {
+      // A silent auto-rejoin failing just falls back to the manual form —
+      // no need to show an error the person never asked to see.
+      if (!opts.silent) showErr(errEl, res.error);
+      return;
+    }
+    quizCode = code;
+    participantId = res.participantId;
+    saveSession(code, { participantId, name, phone, avatar });
+    attachLiveListeners();
+    showStep('lobbyStep');
+  });
+}
+
+function attachLiveListeners() {
+  socket.on('lobby-update', ({ participants }) => {
+    document.getElementById('lobbyCount').textContent = `${participants.length} waiting`;
+    document.getElementById('lobbyParticipants').innerHTML = participants.map(p => `
+      <div class="participant-pill"><span style="font-size:18px;">${p.avatar || '🙂'}</span> ${escapeHtml(p.name)}</div>
+    `).join('');
+  });
+
+  socket.on('question-start', ({ index, total, question, startedAt }) => {
+    answered = false;
+    currentQuestion = question;
+    document.getElementById('progressLabel').textContent = `Question ${index + 1} of ${total}`;
+    document.getElementById('progressFill').style.width = `${Math.round(((index) / total) * 100)}%`;
+    document.getElementById('questionText').textContent = question.text;
+    document.getElementById('answerFeedback').innerHTML = '';
+    document.getElementById('streakBox').classList.add('hidden');
+
+    const img = document.getElementById('questionImage');
+    if (question.imageUrl) { img.src = question.imageUrl; img.classList.remove('hidden'); }
+    else { img.classList.add('hidden'); }
+
+    ['optionsGrid', 'typedAnswerBox', 'numericAnswerBox', 'orderingBox', 'submitOrderingBtn'].forEach(id => document.getElementById(id).classList.add('hidden'));
+
+    if (question.type === 'typed') {
+      document.getElementById('typedAnswerBox').classList.remove('hidden');
+      document.getElementById('typedAnswerInput').value = '';
+      document.getElementById('typedAnswerInput').disabled = false;
+      document.getElementById('submitTypedBtn').disabled = false;
+    } else if (question.type === 'numeric') {
+      document.getElementById('numericAnswerBox').classList.remove('hidden');
+      document.getElementById('numericAnswerInput').value = '';
+      document.getElementById('numericAnswerInput').disabled = false;
+      document.getElementById('submitNumericBtn').disabled = false;
+    } else if (question.type === 'ordering') {
+      orderCurrent = [...question.items];
+      renderOrderList();
+      document.getElementById('orderingBox').classList.remove('hidden');
+      document.getElementById('submitOrderingBtn').classList.remove('hidden');
+      document.getElementById('submitOrderingBtn').disabled = false;
+    } else {
+      const optionsGrid = document.getElementById('optionsGrid');
+      optionsGrid.classList.remove('hidden');
+      optionsGrid.innerHTML = question.options.map(opt => `
+        <button type="button" class="option-btn" data-value="${escapeHtml(opt)}">${escapeHtml(opt)}</button>
+      `).join('');
+      optionsGrid.querySelectorAll('.option-btn').forEach(b => b.addEventListener('click', () => submitAnswer(b.dataset.value, b)));
+    }
+
+    showStep('liveStep');
+    Sound.start();
+    startTimer(question.timeLimit, startedAt);
+  });
+
+  socket.on('leaderboard-update', () => { /* leaderboard shown at the end for students */ });
+
+  socket.on('quiz-end', ({ leaderboard }) => {
+    clearInterval(timerInterval);
+    showStep('doneStep');
+    Sound.finish();
+    fireConfetti(100);
+    const me = leaderboard.find(r => r.id === participantId);
+    if (me) {
+      document.getElementById('myScoreLine').textContent = `You scored ${me.score} correct — rank #${me.rank} of ${leaderboard.length}.`;
+      document.getElementById('myBadges').innerHTML = (me.badges || []).map(b => `<span class="earned-badge"><i data-lucide="${b.icon || 'award'}" class="icon"></i>${escapeHtml(b.label)}</span>`).join('');
+      refreshIcons();
+    }
+    document.getElementById('finalLeaderboard').innerHTML = leaderboard.map((r) => `
+      <div class="leaderboard-row">
+        <div class="rank-badge ${['gold','silver','bronze'][r.rank - 1] || ''}">${r.rank}</div>
+        <span style="font-size:18px;">${r.avatar || '🙂'}</span>
+        <div style="flex:1;font-weight:700;">${escapeHtml(r.name)}${r.id === participantId ? ' (you)' : ''}</div>
+        <div class="muted" style="font-size:13px;">${(r.totalTimeMs / 1000).toFixed(1)}s</div>
+        <div class="badge badge-orange">${r.score} correct</div>
+      </div>`).join('');
+  });
+}
+
+function renderOrderList() {
+  document.getElementById('orderingBox').innerHTML = orderCurrent.map((item, i) => `
+    <div class="order-item">
+      <span class="order-num">${i + 1}</span>
+      <span>${escapeHtml(item)}</span>
+      <span class="order-controls">
+        <button type="button" onclick="moveOrder(${i}, -1)" ${i === 0 ? 'disabled' : ''} aria-label="Move up"><i data-lucide="chevron-up" class="icon"></i></button>
+        <button type="button" onclick="moveOrder(${i}, 1)" ${i === orderCurrent.length - 1 ? 'disabled' : ''} aria-label="Move down"><i data-lucide="chevron-down" class="icon"></i></button>
+      </span>
+    </div>`).join('');
+  refreshIcons();
+}
+function moveOrder(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= orderCurrent.length) return;
+  [orderCurrent[i], orderCurrent[j]] = [orderCurrent[j], orderCurrent[i]];
+  renderOrderList();
+}
+
+function startTimer(seconds, startedAt) {
+  clearInterval(timerInterval);
+  const ring = document.getElementById('timerRing');
+  function tick() {
+    const elapsed = (Date.now() - startedAt) / 1000;
+    const remaining = Math.max(0, Math.ceil(seconds - elapsed));
+    ring.textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      lockAnswers();
+    }
+  }
+  tick();
+  timerInterval = setInterval(tick, 250);
+}
+
+function lockAnswers() {
+  document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+  document.getElementById('typedAnswerInput').disabled = true;
+  document.getElementById('submitTypedBtn').disabled = true;
+  document.getElementById('numericAnswerInput').disabled = true;
+  document.getElementById('submitNumericBtn').disabled = true;
+  document.getElementById('submitOrderingBtn').disabled = true;
+  if (!answered) {
+    document.getElementById('answerFeedback').innerHTML = `<p class="muted">Time's up!</p>`;
+  }
+}
+
+document.getElementById('submitTypedBtn').addEventListener('click', () => {
+  const val = document.getElementById('typedAnswerInput').value.trim();
+  if (!val) return;
+  submitAnswer(val, null);
+});
+document.getElementById('submitNumericBtn').addEventListener('click', () => {
+  const val = document.getElementById('numericAnswerInput').value;
+  if (val === '') return;
+  submitAnswer(val, null);
+});
+document.getElementById('submitOrderingBtn').addEventListener('click', () => {
+  submitAnswer(orderCurrent, null);
+});
+
+function submitAnswer(value, btnEl) {
+  if (answered || !currentQuestion) return;
+  answered = true;
+  document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+  document.getElementById('typedAnswerInput').disabled = true;
+  document.getElementById('submitTypedBtn').disabled = true;
+  document.getElementById('numericAnswerInput').disabled = true;
+  document.getElementById('submitNumericBtn').disabled = true;
+  document.getElementById('submitOrderingBtn').disabled = true;
+  if (btnEl) btnEl.classList.add('selected');
+
+  socket.emit('submit-answer', {
+    code: quizCode,
+    participantId,
+    questionId: currentQuestion.id,
+    answer: value,
+  }, (res) => {
+    if (!res) return;
+    if (res.error) {
+      document.getElementById('answerFeedback').innerHTML = `<p class="error-text">${escapeHtml(res.error)}</p>`;
+      return;
+    }
+    if (btnEl) btnEl.classList.add(res.correct ? 'correct' : 'incorrect');
+    if (res.correct) {
+      Sound.correct();
+      document.getElementById('answerFeedback').innerHTML = `<p class="success-text pop"><i data-lucide="check" class="icon"></i> Correct!</p>`;
+      if (res.streak >= 2) {
+        document.getElementById('streakBox').classList.remove('hidden');
+        document.getElementById('streakBadge').innerHTML = `<i data-lucide="flame" class="icon"></i> ${res.streak} streak`;
+      }
+    } else {
+      Sound.incorrect();
+      const correctDisplay = Array.isArray(res.correctAnswer) ? res.correctAnswer.join(' → ') : res.correctAnswer;
+      document.getElementById('answerFeedback').innerHTML = `<p class="error-text"><i data-lucide="x" class="icon"></i> Not quite — the answer was "${escapeHtml(String(correctDisplay))}"</p>`;
+    }
+    refreshIcons();
+  });
+}
+
+function showErr(el, msg) { el.textContent = msg; el.classList.remove('hidden'); }
+function hideErr(el) { el.classList.add('hidden'); el.textContent = ''; }
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

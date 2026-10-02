@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Practice solo — EDxKa</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div class="play-wrap">
+  <div class="flex justify-between items-center" style="position:fixed;top:16px;left:16px;right:16px;">
+    <a href="/" class="logo">EDx<span class="accent">Ka</span></a>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"></button>
+  </div>
+
+  <!-- Step 1: enter code -->
+  <div class="card play-card fade-in" id="startStep">
+    <div class="eyebrow" style="margin-bottom:14px;"><i data-lucide="graduation-cap" class="icon"></i> Solo practice mode</div>
+    <h2 style="margin:0 0 4px;">Study at your own pace</h2>
+    <p class="muted mb-24">No countdown, no lobby — just you and the questions. See exactly what you got right at the end.</p>
+    <form id="startForm" style="text-align:left;">
+      <div class="field">
+        <label for="codeInput">Quiz code</label>
+        <input type="text" id="codeInput" maxlength="6" style="text-transform:uppercase;letter-spacing:2px;font-weight:800;" required />
+      </div>
+      <button type="submit" class="btn btn-teal btn-block" id="startBtn">Start practicing</button>
+      <div class="error-text hidden" id="startErr"></div>
+    </form>
+    <p class="text-center mt-16" style="font-size:14px;">
+      Want to race the clock with your class instead? <a href="/join.html" style="color:var(--orange);font-weight:800;">Join a live session →</a>
+    </p>
+  </div>
+
+  <!-- Step 2: question by question -->
+  <div class="card play-card hidden" id="questionStep">
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%;"></div></div>
+    <div class="flex justify-between items-center mt-8 mb-16">
+      <span class="muted" id="progressLabel">Question 1 of 5</span>
+      <span class="badge badge-muted" id="topicBadge"></span>
+    </div>
+    <img id="questionImage" class="question-image hidden" alt="" />
+    <h2 id="questionText" style="margin:0 0 24px;text-align:left;font-size:22px;"></h2>
+    <div class="options-grid" id="optionsGrid"></div>
+    <div id="typedAnswerBox" class="hidden mt-8"><input type="text" id="typedAnswerInput" placeholder="Type your answer…" /></div>
+    <div id="numericAnswerBox" class="hidden mt-8"><input type="number" step="any" id="numericAnswerInput" placeholder="Type a number…" /></div>
+    <div id="orderingBox" class="hidden order-list"></div>
+    <button class="btn btn-primary btn-block mt-24" id="nextBtn">Next question →</button>
+  </div>
+
+  <!-- Step 3: results / review -->
+  <div class="card play-card hidden" id="resultsStep" style="max-width:640px;">
+    <h2 style="margin:0 0 8px;"><i data-lucide="party-popper" class="icon icon-lg"></i> Nice work!</h2>
+    <p class="muted mb-8" id="scoreLine"></p>
+    <div class="progress-track mb-24"><div class="progress-fill" id="scoreFill"></div></div>
+    <div id="reviewList" style="text-align:left;"></div>
+    <a href="/practice.html" class="btn btn-outline btn-block mt-24">Practice again</a>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/theme.js"></script>
+<script>
+mountThemeToggle(document.getElementById('themeToggle'));
+
+const params = new URLSearchParams(window.location.search);
+const prefillCode = (params.get('code') || '').toUpperCase();
+if (prefillCode) document.getElementById('codeInput').value = prefillCode;
+
+const steps = ['startStep', 'questionStep', 'resultsStep'];
+function showStep(id) { steps.forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id)); }
+
+let questions = [];
+let quizCode = null;
+let quizTitle = '';
+let index = 0;
+let collected = []; // { questionId, answer }
+let orderCurrent = [];
+
+document.getElementById('startForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('startErr');
+  hideErr(errEl);
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  if (!code) return;
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    const res = await fetch(`/api/quizzes/by-code/${code}/practice`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load that quiz.');
+    questions = data.questions;
+    quizTitle = data.title;
+    quizCode = code;
+    index = 0;
+    collected = [];
+    showQuestion();
+    showStep('questionStep');
+  } catch (err) {
+    showErr(errEl, err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Start practicing';
+  }
+});
+
+function showQuestion() {
+  const q = questions[index];
+  document.getElementById('progressLabel').textContent = `Question ${index + 1} of ${questions.length}`;
+  document.getElementById('progressFill').style.width = `${Math.round((index / questions.length) * 100)}%`;
+  document.getElementById('topicBadge').textContent = q.topic || '';
+  document.getElementById('topicBadge').style.visibility = q.topic ? 'visible' : 'hidden';
+  document.getElementById('questionText').textContent = q.text;
+
+  const img = document.getElementById('questionImage');
+  if (q.imageUrl) { img.src = q.imageUrl; img.classList.remove('hidden'); } else { img.classList.add('hidden'); }
+
+  ['optionsGrid', 'typedAnswerBox', 'numericAnswerBox', 'orderingBox'].forEach(id => document.getElementById(id).classList.add('hidden'));
+
+  if (q.type === 'typed') {
+    document.getElementById('typedAnswerBox').classList.remove('hidden');
+    document.getElementById('typedAnswerInput').value = '';
+  } else if (q.type === 'numeric') {
+    document.getElementById('numericAnswerBox').classList.remove('hidden');
+    document.getElementById('numericAnswerInput').value = '';
+  } else if (q.type === 'ordering') {
+    orderCurrent = [...q.items];
+    renderOrderList();
+    document.getElementById('orderingBox').classList.remove('hidden');
+  } else {
+    const grid = document.getElementById('optionsGrid');
+    grid.classList.remove('hidden');
+    grid.innerHTML = q.options.map(opt => `<button type="button" class="option-btn" data-value="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`).join('');
+    grid.querySelectorAll('.option-btn').forEach(b => b.addEventListener('click', () => {
+      grid.querySelectorAll('.option-btn').forEach(x => x.classList.remove('selected'));
+      b.classList.add('selected');
+    }));
+  }
+
+  document.getElementById('nextBtn').textContent = index === questions.length - 1 ? 'Finish & see results' : 'Next question →';
+}
+
+function renderOrderList() {
+  document.getElementById('orderingBox').innerHTML = orderCurrent.map((item, i) => `
+    <div class="order-item">
+      <span class="order-num">${i + 1}</span>
+      <span>${escapeHtml(item)}</span>
+      <span class="order-controls">
+        <button type="button" onclick="moveOrder(${i}, -1)" ${i === 0 ? 'disabled' : ''} aria-label="Move up"><i data-lucide="chevron-up" class="icon"></i></button>
+        <button type="button" onclick="moveOrder(${i}, 1)" ${i === orderCurrent.length - 1 ? 'disabled' : ''} aria-label="Move down"><i data-lucide="chevron-down" class="icon"></i></button>
+      </span>
+    </div>`).join('');
+  refreshIcons();
+}
+function moveOrder(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= orderCurrent.length) return;
+  [orderCurrent[i], orderCurrent[j]] = [orderCurrent[j], orderCurrent[i]];
+  renderOrderList();
+}
+
+function currentAnswer() {
+  const q = questions[index];
+  if (q.type === 'typed') return document.getElementById('typedAnswerInput').value.trim();
+  if (q.type === 'numeric') return document.getElementById('numericAnswerInput').value;
+  if (q.type === 'ordering') return orderCurrent;
+  const sel = document.querySelector('.option-btn.selected');
+  return sel ? sel.dataset.value : '';
+}
+
+document.getElementById('nextBtn').addEventListener('click', async () => {
+  const q = questions[index];
+  collected.push({ questionId: q.id, answer: currentAnswer() });
+  if (index < questions.length - 1) {
+    index += 1;
+    showQuestion();
+  } else {
+    await finishPractice();
+  }
+});
+
+async function finishPractice() {
+  const btn = document.getElementById('nextBtn');
+  btn.disabled = true; btn.textContent = 'Grading…';
+  try {
+    const res = await fetch(`/api/quizzes/by-code/${quizCode}/practice/submit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: collected }),
+    });
+    const data = await res.json();
+    showResults(data);
+  } catch (err) {
+    alert('Could not grade your answers — please try again.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showResults(data) {
+  const pct = Math.round((data.score / data.total) * 100);
+  document.getElementById('scoreLine').textContent = `You got ${data.score} out of ${data.total} correct (${pct}%) on "${quizTitle}".`;
+  document.getElementById('scoreFill').style.width = pct + '%';
+
+  document.getElementById('reviewList').innerHTML = data.results.map((r, i) => {
+    const q = questions.find(qq => qq.id === r.questionId);
+    const yourAnswer = Array.isArray(collected[i].answer) ? collected[i].answer.join(' → ') : collected[i].answer;
+    const correctAnswer = Array.isArray(r.correctAnswer) ? r.correctAnswer.join(' → ') : r.correctAnswer;
+    return `
+      <div class="card question-card" style="margin-bottom:12px;">
+        <div style="width:100%;">
+          <div class="q-type">${r.correct ? '<i data-lucide="check-circle" class="icon"></i> Correct' : '<i data-lucide="x-circle" class="icon"></i> Incorrect'}</div>
+          <div class="q-text">${i + 1}. ${escapeHtml(q ? q.text : '')}</div>
+          <div class="q-meta">Your answer: ${escapeHtml(String(yourAnswer || '—'))}</div>
+          ${!r.correct ? `<div class="q-meta">Correct answer: ${escapeHtml(String(correctAnswer))}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  refreshIcons();
+
+  showStep('resultsStep');
+  if (pct >= 70) { Sound.finish(); fireConfetti(70); } else { Sound.incorrect(); }
+}
+
+function showErr(el, msg) { el.textContent = msg; el.classList.remove('hidden'); }
+function hideErr(el) { el.classList.add('hidden'); el.textContent = ''; }
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
